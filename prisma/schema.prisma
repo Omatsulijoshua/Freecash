@@ -1,0 +1,558 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// SYSTEM HEALTH CHECK MODEL
+// ==========================================
+model HealthCheck {
+  id        String   @id @default(cuid())
+  status    String   @default("ok")
+  timestamp DateTime @default(now())
+}
+
+// ==========================================
+// USER & ACCESS CONTROL (RBAC) MODELS
+// ==========================================
+enum Role {
+  EARNER
+  ADVERTISER
+  ADMIN
+  SUPPORT
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+  FLAGGED
+}
+
+model User {
+  id            String        @id @default(cuid())
+  email         String        @unique
+  passwordHash  String
+  role          Role          @default(EARNER)
+  status        AccountStatus @default(ACTIVE)
+  emailVerified Boolean       @default(false)
+  referralCode  String        @unique
+  referredById  String?
+  referredBy    User?         @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals     User[]        @relation("UserReferrals")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  profile             UserProfile?
+  advertiserProfile   AdvertiserProfile?
+  wallet              Wallet?
+  campaigns           Campaign[]
+  participations      TaskParticipation[]
+  submissionsReviewed TaskSubmission[]      @relation("ReviewedSubmissions")
+  deposits            Deposit[]
+  withdrawals         Withdrawal[]
+  kycRecords          KycRecord[]
+  supportTickets      SupportTicket[]       @relation("UserTickets")
+  assignedTickets     SupportTicket[]       @relation("AssignedSupportTickets")
+  ticketMessages      TicketMessage[]
+  fraudScores         FraudScore[]
+  fraudEvents         FraudEvent[]
+  auditLogs           AuditLog[]
+  notifications       Notification[]
+
+  @@index([role])
+  @@index([status])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model UserProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName    String
+  phoneNumber String?
+  country     String   @default("NG")
+  currency    String   @default("NGN")
+  avatarUrl   String?
+  kycStatus   String   @default("NOT_SUBMITTED") // NOT_SUBMITTED, PENDING, VERIFIED, REJECTED
+  riskScore   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([country])
+  @@index([kycStatus])
+  @@map("user_profiles")
+}
+
+model AdvertiserProfile {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName        String
+  website            String?
+  verificationStatus String   @default("UNVERIFIED") // UNVERIFIED, PENDING, VERIFIED
+  totalSpent         Decimal  @default(0.00) @db.Decimal(14, 2)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([verificationStatus])
+  @@map("advertiser_profiles")
+}
+
+// ==========================================
+// TASK & CAMPAIGN SYSTEM MODELS
+// ==========================================
+enum CampaignStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  EXPIRED
+  REJECTED
+  CANCELLED
+}
+
+enum VerificationMethod {
+  AUTOMATED
+  MANUAL
+  HYBRID
+}
+
+model TaskCategory {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  slug        String     @unique
+  description String?
+  icon        String?
+  isActive    Boolean    @default(true)
+  campaigns   Campaign[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([isActive])
+  @@map("task_categories")
+}
+
+model Campaign {
+  id                      String             @id @default(cuid())
+  advertiserId            String
+  advertiser              User               @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  title                   String
+  description             String
+  categoryId              String
+  category                TaskCategory       @relation(fields: [categoryId], references: [id])
+  instructions            String
+  destinationUrl          String?
+  totalBudget             Decimal            @db.Decimal(14, 2)
+  rewardPerCompletion     Decimal            @db.Decimal(14, 2)
+  commissionPerCompletion Decimal            @db.Decimal(14, 2)
+  maxCompletions          Int
+  currentCompletions      Int                @default(0)
+  status                  CampaignStatus     @default(DRAFT)
+  verificationMethod      VerificationMethod @default(MANUAL)
+  targetCountries         String[]           @default(["NG"])
+  startDate               DateTime?
+  endDate                 DateTime?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  participations TaskParticipation[]
+  deposits       Deposit[]
+
+  @@index([advertiserId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("campaigns")
+}
+
+enum ParticipationStatus {
+  STARTED
+  SUBMITTED
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+model TaskParticipation {
+  id          String              @id @default(cuid())
+  campaignId  String
+  campaign    Campaign            @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      ParticipationStatus @default(STARTED)
+  startedAt   DateTime            @default(now())
+  expiresAt   DateTime?
+  submittedAt DateTime?
+  reviewedAt  DateTime?
+
+  submission TaskSubmission?
+
+  @@index([campaignId])
+  @@index([userId])
+  @@index([status])
+  @@index([startedAt])
+  @@map("task_participations")
+}
+
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model TaskSubmission {
+  id              String            @id @default(cuid())
+  participationId String            @unique
+  participation   TaskParticipation @relation(fields: [participationId], references: [id], onDelete: Cascade)
+  proofText       String?
+  evidenceUrls    String[]
+  reviewerId      String?
+  reviewer        User?             @relation("ReviewedSubmissions", fields: [reviewerId], references: [id], onDelete: SetNull)
+  rejectionReason String?
+  status          SubmissionStatus  @default(PENDING)
+  submittedAt     DateTime          @default(now())
+  reviewedAt      DateTime?
+
+  @@index([status])
+  @@index([reviewerId])
+  @@map("task_submissions")
+}
+
+// ==========================================
+// FINANCIAL LEDGER & WALLET MODELS
+// ==========================================
+enum TransactionType {
+  TASK_REWARD
+  WITHDRAWAL
+  DEPOSIT
+  REFUND
+  COMMISSION
+  BONUS
+  REFERRAL_REWARD
+  ADJUSTMENT
+}
+
+enum TransactionDirection {
+  CREDIT
+  DEBIT
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model Wallet {
+  id             String              @id @default(cuid())
+  userId         String              @unique
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currency       String              @default("NGN")
+  balance        Decimal             @default(0.00) @db.Decimal(14, 2)
+  pendingBalance Decimal             @default(0.00) @db.Decimal(14, 2)
+  isLocked       Boolean             @default(false)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  transactions   WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id                String               @id @default(cuid())
+  walletId          String
+  wallet            Wallet               @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  userId            String
+  type              TransactionType
+  amount            Decimal              @db.Decimal(14, 2)
+  direction         TransactionDirection
+  status            TransactionStatus    @default(PENDING)
+  reference         String               @unique
+  description       String
+  relatedTaskId     String?
+  relatedCampaignId String?
+  paymentProvider   String?
+  providerReference String?
+  createdAt         DateTime             @default(now())
+
+  @@index([walletId])
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+  @@map("wallet_transactions")
+}
+
+enum DepositStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model Deposit {
+  id                String        @id @default(cuid())
+  userId            String
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaignId        String?
+  campaign          Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  amount            Decimal       @db.Decimal(14, 2)
+  fee               Decimal       @default(0.00) @db.Decimal(14, 2)
+  netAmount         Decimal       @db.Decimal(14, 2)
+  provider          String        // PAYSTACK, FLUTTERWAVE
+  providerReference String        @unique
+  status            DepositStatus @default(PENDING)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("deposits")
+}
+
+enum WithdrawalStatus {
+  REQUESTED
+  PROCESSING
+  APPROVED
+  COMPLETED
+  FAILED
+  REJECTED
+  CANCELLED
+}
+
+model Withdrawal {
+  id                String           @id @default(cuid())
+  userId            String
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount            Decimal          @db.Decimal(14, 2)
+  fee               Decimal          @default(0.00) @db.Decimal(14, 2)
+  netAmount         Decimal          @db.Decimal(14, 2)
+  bankCode          String
+  bankName          String
+  accountNumber     String
+  accountName       String
+  status            WithdrawalStatus @default(REQUESTED)
+  riskScore         Int              @default(0)
+  providerReference String?
+  rejectionReason   String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("withdrawals")
+}
+
+// ==========================================
+// REFERRAL SYSTEM MODELS
+// ==========================================
+enum ReferralRewardStatus {
+  PENDING
+  QUALIFIED
+  PAID
+  CANCELLED
+}
+
+model ReferralReward {
+  id           String               @id @default(cuid())
+  referrerId   String
+  refereeId    String               @unique
+  earnedAmount Decimal              @default(0.00) @db.Decimal(14, 2)
+  rewardStatus ReferralRewardStatus @default(PENDING)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([referrerId])
+  @@index([rewardStatus])
+  @@map("referral_rewards")
+}
+
+// ==========================================
+// KYC & SECURITY MODELS
+// ==========================================
+enum KycDocumentType {
+  NATIONAL_ID
+  PASSPORT
+  VOTERS_CARD
+  DRIVERS_LICENSE
+  BANK_VERIFICATION
+}
+
+enum KycRecordStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model KycRecord {
+  id             String          @id @default(cuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentType   KycDocumentType
+  documentNumber String
+  documentUrl    String
+  status         KycRecordStatus @default(PENDING)
+  rejectionReason String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("kyc_records")
+}
+
+// ==========================================
+// ANTI-FRAUD ENGINE MODELS
+// ==========================================
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model FraudScore {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  score       Int       @default(0)
+  level       RiskLevel @default(LOW)
+  reasons     String[]
+  lastChecked DateTime  @default(now())
+
+  @@index([userId])
+  @@index([level])
+  @@map("fraud_scores")
+}
+
+model FraudEvent {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signalType  String    // DUP_IP, VELOCITY, FAKE_PROOF, VPN_DETECTED
+  severity    RiskLevel @default(LOW)
+  description String
+  ipAddress   String?
+  deviceHash  String?
+  metadata    String?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@index([signalType])
+  @@index([createdAt])
+  @@map("fraud_events")
+}
+
+// ==========================================
+// SUPPORT & TICKETING MODELS
+// ==========================================
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_USER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketCategory {
+  PAYMENT_ISSUE
+  WITHDRAWAL_ISSUE
+  TASK_DISPUTE
+  ACCOUNT_ISSUE
+  VERIFICATION_ISSUE
+  FRAUD_APPEAL
+  OTHER
+}
+
+model SupportTicket {
+  id           String         @id @default(cuid())
+  userId       String
+  user         User           @relation("UserTickets", fields: [userId], references: [id], onDelete: Cascade)
+  assignedToId String?
+  assignedTo   User?          @relation("AssignedSupportTickets", fields: [assignedToId], references: [id], onDelete: SetNull)
+  subject      String
+  category     TicketCategory @default(OTHER)
+  status       TicketStatus   @default(OPEN)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  messages TicketMessage[]
+
+  @@index([userId])
+  @@index([assignedToId])
+  @@index([status])
+  @@map("support_tickets")
+}
+
+model TicketMessage {
+  id        String        @id @default(cuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  message   String
+  createdAt DateTime      @default(now())
+
+  @@index([ticketId])
+  @@map("ticket_messages")
+}
+
+// ==========================================
+// SYSTEM CONFIG & AUDIT TRAIL
+// ==========================================
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action     String
+  targetType String
+  targetId   String?
+  metadata   String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ==========================================
+// NOTIFICATION MODEL
+// ==========================================
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  message   String
+  linkUrl   String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
