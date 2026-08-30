@@ -10,6 +10,9 @@
     "prisma:generate": "prisma generate",
     "prisma:db:push": "prisma db push"
   },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
   "dependencies": {
     "@prisma/client": "^5.19.0",
     "bcryptjs": "^3.0.3",
