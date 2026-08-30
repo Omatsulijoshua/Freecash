@@ -21,7 +21,7 @@ async function main() {
   try {
     // 1. .ENV.EXAMPLE SPECIFICATION VERIFICATION
     console.log('--- 1. Verify Production Environment Specification (.env.example) ---');
-    const envExamplePath = path.join('c:', 'Users', 'Joshua', 'Desktop', 'freecash', '.env.example');
+    const envExamplePath = path.join(process.cwd(), '.env.example');
     assert(fs.existsSync(envExamplePath), '.env.example template file present');
     const envContent = fs.readFileSync(envExamplePath, 'utf8');
     assert(envContent.includes('DATABASE_URL'), '.env.example specifies DATABASE_URL');
@@ -30,12 +30,12 @@ async function main() {
 
     // 2. ENVIRONMENT VALIDATOR MODULE VERIFICATION
     console.log('\n--- 2. Verify Environment Validator Module (src/lib/env-validator.ts) ---');
-    const validatorPath = path.join('c:', 'Users', 'Joshua', 'Desktop', 'freecash', 'src', 'lib', 'env-validator.ts');
+    const validatorPath = path.join(process.cwd(), 'src', 'lib', 'env-validator.ts');
     assert(fs.existsSync(validatorPath), 'src/lib/env-validator.ts file present');
 
     // 3. MASTER PLATFORM E2E INTEGRATION VERIFICATION SWEEP
     console.log('\n--- 3. Execute Master Platform E2E Integration Verification Sweep ---');
-    const masterProc = spawn('node', ['prisma/verify-all.js'], { cwd: 'c:\\Users\\Joshua\\Desktop\\freecash' });
+    const masterProc = spawn('node', ['prisma/verify-all.js'], { cwd: process.cwd() });
 
     let masterOutput = '';
     masterProc.stdout?.on('data', (d) => {

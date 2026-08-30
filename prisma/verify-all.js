@@ -7,10 +7,10 @@ async function main() {
   console.log('=== FREE CASH MASTER E2E PLATFORM INTEGRATION TEST RUNNER ===');
   console.log('===============================================================\n');
 
-  const nextBin = path.join('c:', 'Users', 'Joshua', 'Desktop', 'freecash', 'node_modules', 'next', 'dist', 'bin', 'next');
+  const nextBin = path.join(process.cwd(), 'node_modules', 'next', 'dist', 'bin', 'next');
 
   const server = spawn('node', [nextBin, 'dev', '-H', '127.0.0.1', '-p', '3000'], {
-    cwd: 'c:\\Users\\Joshua\\Desktop\\freecash',
+    cwd: process.cwd(),
   });
 
   server.stdout?.on('data', (d) => {});

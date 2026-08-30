@@ -6,10 +6,10 @@ const fs = require('fs');
 async function main() {
   console.log('=== STARTING PHASE 17 AUTOMATED TESTING & CI/CD SUITE VERIFICATION ===\n');
 
-  const nextBin = path.join('c:', 'Users', 'Joshua', 'Desktop', 'freecash', 'node_modules', 'next', 'dist', 'bin', 'next');
+  const nextBin = path.join(process.cwd(), 'node_modules', 'next', 'dist', 'bin', 'next');
 
   const server = spawn('node', [nextBin, 'dev', '-H', '127.0.0.1', '-p', '3000'], {
-    cwd: 'c:\\Users\\Joshua\\Desktop\\freecash',
+    cwd: process.cwd(),
   });
 
   server.stdout?.on('data', (d) => console.log('[Server]', d.toString().trim()));
@@ -85,13 +85,13 @@ async function main() {
 
     // 2. GITHUB ACTIONS CI/CD WORKFLOW VERIFICATION
     console.log('\n--- 2. GitHub Actions CI/CD Workflow File (.github/workflows/ci.yml) ---');
-    const ciFilePath = path.join('c:', 'Users', 'Joshua', 'Desktop', 'freecash', '.github', 'workflows', 'ci.yml');
+    const ciFilePath = path.join(process.cwd(), '.github', 'workflows', 'ci.yml');
     const ciFileExists = fs.existsSync(ciFilePath);
     assert(ciFileExists, 'GitHub Actions workflow file .github/workflows/ci.yml present');
 
     // 3. MASTER E2E INTEGRATION TEST RUNNER VERIFICATION
     console.log('\n--- 3. Master E2E Integration Test Runner File (prisma/verify-all.js) ---');
-    const verifyAllPath = path.join('c:', 'Users', 'Joshua', 'Desktop', 'freecash', 'prisma', 'verify-all.js');
+    const verifyAllPath = path.join(process.cwd(), 'prisma', 'verify-all.js');
     const verifyAllExists = fs.existsSync(verifyAllPath);
     assert(verifyAllExists, 'Master Integration Test Runner file prisma/verify-all.js present');
 
